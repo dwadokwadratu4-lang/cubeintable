@@ -16,6 +16,7 @@ interface ArBimViewportProps {
   collisionActive: boolean;
   replayDropSignal: number;
   resetRotationSignal: number;
+  poseLocked: boolean;
   onMarkerVisibilityChange: (visible: boolean) => void;
   onFoundationImpact: () => void;
   onHotspotSelect: (hotspotId: HotspotInfo['id']) => void;
@@ -28,10 +29,15 @@ interface DropPhysics {
 }
 
 const GRAVITY = 22.0;
+const SMOOTH_FACTOR = 0.18;
+const MARKER_HIDE_GRACE_MS = 300;
 
 // Pre-allocated math helpers outside render loop (zero GC)
 const _raycaster = new THREE.Raycaster();
 const _pointerNDC = new THREE.Vector2();
+const _rawPos = new THREE.Vector3();
+const _rawQuat = new THREE.Quaternion();
+const _rawScale = new THREE.Vector3();
 
 function detectSoftwareWebGL(): boolean {
   try {
@@ -56,6 +62,7 @@ export default function ArBimViewport({
   collisionActive,
   replayDropSignal,
   resetRotationSignal,
+  poseLocked,
   onMarkerVisibilityChange,
   onFoundationImpact,
   onHotspotSelect,
@@ -68,6 +75,7 @@ export default function ArBimViewport({
   const prevEmergenceRef = useRef(emergence);
   const xrayModeRef = useRef(xrayMode);
   const collisionActiveRef = useRef(collisionActive);
+  const poseLockedRef = useRef(poseLocked);
 
   const onMarkerVisRef = useRef(onMarkerVisibilityChange);
   const onFoundationImpactRef = useRef(onFoundationImpact);
@@ -135,6 +143,10 @@ export default function ArBimViewport({
   }, [resetRotationSignal]);
 
   useEffect(() => {
+    poseLockedRef.current = poseLocked;
+  }, [poseLocked]);
+
+  useEffect(() => {
     const container = mountRef.current;
     if (!container) return;
 
@@ -197,16 +209,16 @@ export default function ArBimViewport({
     keyLight.castShadow = !isSoftwareGl;
     keyLight.shadow.mapSize.set(1024, 1024);
     keyLight.shadow.camera.near = 0.5;
-    keyLight.shadow.camera.far = 12;
-    keyLight.shadow.camera.left = -1.6;
-    keyLight.shadow.camera.right = 1.6;
-    keyLight.shadow.camera.top = 1.6;
-    keyLight.shadow.camera.bottom = -1.6;
+    keyLight.shadow.camera.far = 10;
+    keyLight.shadow.camera.left = -1.0;
+    keyLight.shadow.camera.right = 1.0;
+    keyLight.shadow.camera.top = 1.0;
+    keyLight.shadow.camera.bottom = -1.0;
     keyLight.shadow.bias = -0.0005;
     keyLight.shadow.normalBias = 0.02;
     markerGroup.add(keyLight);
     markerGroup.add(keyLight.target);
-    keyLight.target.position.set(0, 0.3, 0);
+    keyLight.target.position.set(0, 0.25, 0);
 
     const rimLight = new THREE.DirectionalLight(0x93c5fd, 0.7);
     rimLight.position.set(-2.4, 2.0, -2.2);
@@ -224,9 +236,6 @@ export default function ArBimViewport({
       null;
     let arMarkerControls: InstanceType<typeof THREEx.ArMarkerControls> | null =
       null;
-    let smoothedControls: InstanceType<
-      typeof THREEx.ArSmoothedControls
-    > | null = null;
     let arInitializedForSize = '';
     let arInitializing = false;
     let disposed = false;
@@ -278,11 +287,22 @@ export default function ArBimViewport({
       video.style.left = leftPx;
       video.style.top = topPx;
 
-      renderer.setSize(Math.round(displayW), Math.round(displayH), false);
-      renderer.domElement.style.width = wPx;
-      renderer.domElement.style.height = hPx;
-      renderer.domElement.style.left = leftPx;
-      renderer.domElement.style.top = topPx;
+      // Match ARToolKit's 4:3 (640x480) projection matrix framing:
+      // In portrait mode ARToolKit draws the 3:4 video centered inside a 4:3 canvas,
+      // so the WebGL overlay canvas must have 4:3 aspect (displayH * 4/3) centered over the video.
+      const isPortraitVideo = video.videoWidth < video.videoHeight;
+      const canvasH = displayH;
+      const canvasW = isPortraitVideo ? displayH * (4 / 3) : displayW;
+      const canvasLeft = isPortraitVideo
+        ? (screenW - canvasW) / 2
+        : offsetLeft;
+      const canvasTop = offsetTop;
+
+      renderer.setSize(Math.round(canvasW), Math.round(canvasH), false);
+      renderer.domElement.style.width = `${Math.round(canvasW)}px`;
+      renderer.domElement.style.height = `${Math.round(canvasH)}px`;
+      renderer.domElement.style.left = `${Math.round(canvasLeft)}px`;
+      renderer.domElement.style.top = `${Math.round(canvasTop)}px`;
 
       if (arToolkitContext && arToolkitContext.arController) {
         arCamera.projectionMatrix.copy(arToolkitContext.getProjectionMatrix());
@@ -307,7 +327,6 @@ export default function ArBimViewport({
         }
       }
       arToolkitContext = null;
-      smoothedControls = null;
       arInitializedForSize = '';
       arInitializing = false;
       rawMarkerGroup.visible = false;
@@ -336,15 +355,14 @@ export default function ArBimViewport({
 
       const vw = video.videoWidth;
       const vh = video.videoHeight;
-      const arScale = 640 / Math.max(vw, vh);
-      const arW = Math.max(240, Math.round(vw * arScale));
-      const arH = Math.max(240, Math.round(vh * arScale));
 
+      // ARToolKit camera_para.dat is calibrated for 4:3 (640x480); keeping 640x480
+      // ensures portrait crop (_copyImageToHeap) preserves exact 1:1 cube proportions.
       const ctx = new THREEx.ArToolkitContext({
         cameraParametersUrl: '/ar/camera_para.dat',
         detectionMode: 'mono',
-        canvasWidth: arW,
-        canvasHeight: arH,
+        canvasWidth: 640,
+        canvasHeight: 480,
         maxDetectionRate: 30,
         patternRatio: 0.5,
       });
@@ -376,15 +394,6 @@ export default function ArBimViewport({
           patternUrl: '/ar/patt.hiro',
           changeMatrixMode: 'modelViewMatrix',
           minConfidence: 0.55,
-        });
-
-        smoothedControls = new THREEx.ArSmoothedControls(markerGroup, {
-          lerpPosition: 0.55,
-          lerpQuaternion: 0.45,
-          lerpScale: 0.7,
-          lerpStepDelay: 1 / 60,
-          minVisibleDelay: 0.0,
-          minUnvisibleDelay: 0.22,
         });
 
         syncCoverLayout();
@@ -472,6 +481,8 @@ export default function ArBimViewport({
     let frameId = 0;
     let timeoutId = 0;
     let lastMarkerVisible = false;
+    let lastSeenMarkerAt = 0;
+    let wasPoseLocked = poseLockedRef.current;
     let lastTime = performance.now();
     const startClock = performance.now();
 
@@ -528,20 +539,53 @@ export default function ArBimViewport({
 
       const video = videoRef.current;
 
+      // Refresh grace timer on unlock so brief hand occlusion doesn't blink immediately
+      if (wasPoseLocked && !poseLockedRef.current) {
+        lastSeenMarkerAt = now;
+      }
+      wasPoseLocked = poseLockedRef.current;
+
       if (cameraActiveRef.current && video) {
         initArTrackingIfReady();
 
-        if (
+        if (poseLockedRef.current && markerGroup.visible) {
+          // Meeting mode ("Zablokuj na stole"): freeze pose relative to camera
+          lastSeenMarkerAt = now;
+        } else if (
           arToolkitContext &&
-          smoothedControls &&
+          arMarkerControls &&
           video.readyState >= video.HAVE_ENOUGH_DATA
         ) {
           arToolkitContext.update(video);
-          smoothedControls.update(rawMarkerGroup);
+
+          if (rawMarkerGroup.visible) {
+            lastSeenMarkerAt = now;
+            rawMarkerGroup.matrix.decompose(_rawPos, _rawQuat, _rawScale);
+
+            if (!markerGroup.visible) {
+              // First acquisition or re-entry after >300ms loss: snap cleanly into place
+              markerGroup.visible = true;
+              markerGroup.position.copy(_rawPos);
+              markerGroup.quaternion.copy(_rawQuat);
+              markerGroup.scale.copy(_rawScale);
+            } else {
+              // Anti-jitter exponential lerp & slerp (~0.18 at 60fps)
+              const alpha = 1 - Math.pow(1 - SMOOTH_FACTOR, dt * 60);
+              markerGroup.position.lerp(_rawPos, alpha);
+              markerGroup.quaternion.slerp(_rawQuat, alpha);
+              markerGroup.scale.lerp(_rawScale, alpha);
+            }
+          } else if (
+            markerGroup.visible &&
+            now - lastSeenMarkerAt >= MARKER_HIDE_GRACE_MS
+          ) {
+            markerGroup.visible = false;
+          }
         }
       } else {
         rawMarkerGroup.visible = false;
         markerGroup.visible = false;
+        lastSeenMarkerAt = 0;
         if (arToolkitContext) {
           disposeArTracking();
         }

@@ -13,6 +13,8 @@ import {
   ChevronDown,
   ChevronUp,
   Eye,
+  Lock,
+  LockOpen,
   RotateCcw,
   ScanLine,
   X,
@@ -50,6 +52,7 @@ export default function App() {
 
   const [replayDropSignal, setReplayDropSignal] = useState(0);
   const [resetRotationSignal, setResetRotationSignal] = useState(0);
+  const [poseLocked, setPoseLocked] = useState(false);
   const [dockCollapsed, setDockCollapsed] = useState(false);
 
   const handleFoundationImpact = useCallback(() => {
@@ -101,6 +104,7 @@ export default function App() {
     }
     setCameraActive(false);
     setMarkerVisible(false);
+    setPoseLocked(false);
   }, []);
 
   const startCamera = useCallback(async () => {
@@ -126,7 +130,7 @@ export default function App() {
       const stream = await navigator.mediaDevices.getUserMedia({
         video: {
           facingMode: { ideal: 'environment' },
-          width: { ideal: 1280 },
+          width: { ideal: 960 },
           height: { ideal: 720 },
         },
         audio: false,
@@ -213,6 +217,7 @@ export default function App() {
           collisionActive={collisionActive}
           replayDropSignal={replayDropSignal}
           resetRotationSignal={resetRotationSignal}
+          poseLocked={poseLocked}
           onMarkerVisibilityChange={setMarkerVisible}
           onFoundationImpact={handleFoundationImpact}
           onHotspotSelect={setSelectedHotspotId}
@@ -247,16 +252,24 @@ export default function App() {
             <div
               role="status"
               className={`pointer-events-auto flex items-center gap-2 rounded-xl border px-3.5 py-2 text-xs font-medium shadow-lg ${
-                markerVisible
-                  ? 'border-teal-400/40 bg-[#0b101b]/86 text-teal-200'
-                  : 'border-amber-400/45 bg-[#0b101b]/90 text-amber-200'
+                poseLocked
+                  ? 'border-emerald-400/55 bg-[#0b101b]/90 text-emerald-200'
+                  : markerVisible
+                    ? 'border-teal-400/40 bg-[#0b101b]/86 text-teal-200'
+                    : 'border-amber-400/45 bg-[#0b101b]/90 text-amber-200'
               }`}
             >
-              <ScanLine className="h-4 w-4 shrink-0" aria-hidden="true" />
+              {poseLocked ? (
+                <Lock className="h-4 w-4 shrink-0 text-emerald-300" aria-hidden="true" />
+              ) : (
+                <ScanLine className="h-4 w-4 shrink-0" aria-hidden="true" />
+              )}
               <span>
-                {markerVisible
-                  ? 'Znacznik HIRO aktywny · Przesuń palcem w bok, aby obrócić'
-                  : 'Skieruj kamerę na znacznik HIRO'}
+                {poseLocked
+                  ? 'Pozycja zablokowana (Tryb narady) · Możesz obracać model'
+                  : markerVisible
+                    ? 'Znacznik HIRO aktywny · Przesuń palcem w bok, aby obrócić'
+                    : 'Skieruj kamerę na znacznik HIRO'}
               </span>
             </div>
           </div>
@@ -449,8 +462,8 @@ export default function App() {
               </button>
             </div>
 
-            {/* Replay Drop & Reset Rotation */}
-            <div className="grid grid-cols-2 gap-2">
+            {/* Replay Drop, Reset Rotation & Meeting Lock */}
+            <div className="mb-2 grid grid-cols-2 gap-2">
               <button
                 type="button"
                 onClick={() => setReplayDropSignal((prev) => prev + 1)}
@@ -474,6 +487,27 @@ export default function App() {
                 <span>Resetuj obrót</span>
               </button>
             </div>
+
+            <button
+              type="button"
+              onClick={() => setPoseLocked((prev) => !prev)}
+              disabled={!markerVisible && !poseLocked}
+              aria-pressed={poseLocked}
+              className={`flex min-h-[40px] w-full items-center justify-center gap-2 rounded-xl border px-3 py-2 text-xs font-semibold whitespace-nowrap transition-colors active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-45 sm:text-sm ${
+                poseLocked
+                  ? 'border-emerald-400/60 bg-emerald-500/25 text-emerald-200 hover:bg-emerald-500/35'
+                  : 'border-white/15 bg-white/8 text-slate-100 hover:bg-white/14'
+              }`}
+            >
+              {poseLocked ? (
+                <Lock className="h-4 w-4 shrink-0" aria-hidden="true" />
+              ) : (
+                <LockOpen className="h-4 w-4 shrink-0" aria-hidden="true" />
+              )}
+              <span>
+                {poseLocked ? 'Odblokuj pozycję (Tryb narady)' : 'Zablokuj na stole'}
+              </span>
+            </button>
           </div>
         )}
       </section>
