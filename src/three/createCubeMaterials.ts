@@ -2,50 +2,45 @@ import * as THREE from 'three';
 
 export interface CubeFaceSpec {
   id: string;
-  label: string;
   hex: string;
   edgeHex: string;
   roughness: number;
   monogram?: string;
+  pattern?: 'concrete' | 'roof';
 }
 
 /**
- * Six distinct face colors required for the AR cube:
- * +X: Czerwony, -X: Turkusowy, +Y: Pomarańczowy,
- * -Y: Granatowy, +Z: Niebieski (with "AW" monogram), -Z: Żółty
+ * Middle segment ("Etap 2: Konstrukcja nośna") 6-face specification:
+ * +X: Czerwony, -X: Turkusowy, +Y: Stalowy niebieski,
+ * -Y: Granatowy, +Z: Niebieski z monogramem "AW", -Z: Żółty
  */
-export const CUBE_FACE_SPECS: readonly CubeFaceSpec[] = [
+export const CORE_FACE_SPECS: readonly CubeFaceSpec[] = [
   {
     id: 'right',
-    label: 'Czerwony',
     hex: '#ef4444',
     edgeHex: '#b91c1c',
-    roughness: 0.32,
-  },
-  {
-    id: 'left',
-    label: 'Turkusowy',
-    hex: '#14b8a6',
-    edgeHex: '#0f766e',
-    roughness: 0.28,
-  },
-  {
-    id: 'top',
-    label: 'Pomarańczowy',
-    hex: '#f97316',
-    edgeHex: '#c2410c',
     roughness: 0.34,
   },
   {
+    id: 'left',
+    hex: '#14b8a6',
+    edgeHex: '#0f766e',
+    roughness: 0.3,
+  },
+  {
+    id: 'top',
+    hex: '#2563eb',
+    edgeHex: '#1e40af',
+    roughness: 0.35,
+  },
+  {
     id: 'bottom',
-    label: 'Granatowy',
     hex: '#172554',
     edgeHex: '#0f172a',
-    roughness: 0.38,
+    roughness: 0.4,
   },
   {
     id: 'front',
-    label: 'Niebieski',
     hex: '#3b82f6',
     edgeHex: '#1d4ed8',
     roughness: 0.3,
@@ -53,14 +48,13 @@ export const CUBE_FACE_SPECS: readonly CubeFaceSpec[] = [
   },
   {
     id: 'back',
-    label: 'Żółty',
     hex: '#facc15',
     edgeHex: '#ca8a04',
-    roughness: 0.32,
+    roughness: 0.34,
   },
 ];
 
-function createFaceTexture(
+function createSurfaceTexture(
   spec: CubeFaceSpec,
   maxAnisotropy: number
 ): THREE.CanvasTexture {
@@ -71,11 +65,10 @@ function createFaceTexture(
   const ctx = canvas.getContext('2d');
 
   if (ctx) {
-    // Base vivid color preserved across the entire face
     ctx.fillStyle = spec.hex;
     ctx.fillRect(0, 0, size, size);
 
-    // Subtle radial satin sheen so faces read richly under studio lighting
+    // Subtle radial satin sheen
     const grad = ctx.createRadialGradient(
       size * 0.38,
       size * 0.34,
@@ -84,41 +77,67 @@ function createFaceTexture(
       size * 0.5,
       size * 0.78
     );
-    grad.addColorStop(0, 'rgba(255, 255, 255, 0.16)');
+    grad.addColorStop(0, 'rgba(255, 255, 255, 0.14)');
     grad.addColorStop(0.6, 'rgba(255, 255, 255, 0.0)');
-    grad.addColorStop(1, 'rgba(0, 0, 0, 0.14)');
+    grad.addColorStop(1, 'rgba(0, 0, 0, 0.16)');
     ctx.fillStyle = grad;
     ctx.fillRect(0, 0, size, size);
 
-    // Subtle darker edge bevel frame
+    // Architectural concrete formwork or roof seam lines
+    if (spec.pattern === 'concrete') {
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.08)';
+      ctx.lineWidth = 3;
+      for (let y = 128; y < size; y += 128) {
+        ctx.beginPath();
+        ctx.moveTo(0, y);
+        ctx.lineTo(size, y);
+        ctx.stroke();
+      }
+      ctx.fillStyle = 'rgba(15, 23, 42, 0.25)';
+      for (let x = 64; x < size; x += 128) {
+        for (let y = 64; y < size; y += 128) {
+          ctx.beginPath();
+          ctx.arc(x, y, 5, 0, Math.PI * 2);
+          ctx.fill();
+        }
+      }
+    } else if (spec.pattern === 'roof') {
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.16)';
+      ctx.lineWidth = 4;
+      for (let x = 64; x < size; x += 64) {
+        ctx.beginPath();
+        ctx.moveTo(x, 20);
+        ctx.lineTo(x, size - 20);
+        ctx.stroke();
+      }
+    }
+
+    // Edge bevel frame
     ctx.strokeStyle = spec.edgeHex;
-    ctx.lineWidth = 20;
-    ctx.strokeRect(10, 10, size - 20, size - 20);
+    ctx.lineWidth = 18;
+    ctx.strokeRect(9, 9, size - 18, size - 18);
 
-    // Crisp inner architectural hairline
-    ctx.strokeStyle = 'rgba(255, 255, 255, 0.24)';
-    ctx.lineWidth = 4;
-    ctx.strokeRect(36, 36, size - 72, size - 72);
+    // Inner hairline
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.22)';
+    ctx.lineWidth = 3;
+    ctx.strokeRect(32, 32, size - 64, size - 64);
 
-    // Author monogram ("AW") rendered cleanly at the center of the designated face
+    // Large centered "AW" monogram on the front wall
     if (spec.monogram) {
       ctx.save();
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
       ctx.font =
-        '800 205px system-ui, -apple-system, "Segoe UI", Roboto, sans-serif';
+        '800 200px system-ui, -apple-system, "Segoe UI", Roboto, sans-serif';
 
-      // Subtle depth shadow behind letters
-      ctx.fillStyle = 'rgba(15, 23, 42, 0.32)';
-      ctx.fillText(spec.monogram, size / 2 + 4, size / 2 + 12);
+      ctx.fillStyle = 'rgba(15, 23, 42, 0.35)';
+      ctx.fillText(spec.monogram, size / 2 + 4, size / 2 + 10);
 
-      // Crisp high-contrast white monogram
       ctx.fillStyle = '#ffffff';
-      ctx.fillText(spec.monogram, size / 2, size / 2 + 6);
+      ctx.fillText(spec.monogram, size / 2, size / 2 + 4);
 
-      // Subtle precision underline accent below the monogram
-      ctx.fillStyle = 'rgba(255, 255, 255, 0.75)';
-      ctx.fillRect(size / 2 - 72, size / 2 + 98, 144, 6);
+      ctx.fillStyle = 'rgba(255, 255, 255, 0.8)';
+      ctx.fillRect(size / 2 - 74, size / 2 + 96, 148, 6);
       ctx.restore();
     }
   }
@@ -130,30 +149,105 @@ function createFaceTexture(
   return texture;
 }
 
-export interface CubeMaterialBundle {
-  materials: THREE.MeshStandardMaterial[];
+export interface BimMaterialBundle {
+  foundationMaterial: THREE.MeshStandardMaterial;
+  coreMaterials: THREE.MeshStandardMaterial[];
+  roofMaterial: THREE.MeshStandardMaterial;
+  allShellMaterials: THREE.MeshStandardMaterial[];
+  setXrayMode: (enabled: boolean) => void;
+  setCollisionPulse: (intensity: number) => void;
   dispose: () => void;
 }
 
-export function createCubeMaterials(maxAnisotropy: number): CubeMaterialBundle {
+export function createBimShellMaterials(maxAnisotropy: number): BimMaterialBundle {
   const textures: THREE.CanvasTexture[] = [];
 
-  const materials = CUBE_FACE_SPECS.map((spec) => {
-    const map = createFaceTexture(spec, maxAnisotropy);
-    textures.push(map);
+  const foundationTex = createSurfaceTexture(
+    {
+      id: 'foundation',
+      hex: '#1e3a5f',
+      edgeHex: '#0f172a',
+      roughness: 0.72,
+      pattern: 'concrete',
+    },
+    maxAnisotropy
+  );
+  textures.push(foundationTex);
 
+  const foundationMaterial = new THREE.MeshStandardMaterial({
+    map: foundationTex,
+    roughness: 0.72,
+    metalness: 0.08,
+    envMapIntensity: 0.75,
+  });
+
+  const coreMaterials = CORE_FACE_SPECS.map((spec) => {
+    const tex = createSurfaceTexture(spec, maxAnisotropy);
+    textures.push(tex);
     return new THREE.MeshStandardMaterial({
-      map,
+      map: tex,
       roughness: spec.roughness,
-      metalness: 0.08,
+      metalness: 0.1,
       envMapIntensity: 0.9,
     });
   });
 
+  const roofTex = createSurfaceTexture(
+    {
+      id: 'roof',
+      hex: '#ea580c',
+      edgeHex: '#9a3412',
+      roughness: 0.42,
+      pattern: 'roof',
+    },
+    maxAnisotropy
+  );
+  textures.push(roofTex);
+
+  const roofMaterial = new THREE.MeshStandardMaterial({
+    map: roofTex,
+    roughness: 0.42,
+    metalness: 0.12,
+    envMapIntensity: 0.85,
+  });
+
+  const allShellMaterials = [
+    foundationMaterial,
+    ...coreMaterials,
+    roofMaterial,
+  ];
+
+  const setXrayMode = (enabled: boolean) => {
+    allShellMaterials.forEach((mat) => {
+      mat.transparent = enabled;
+      mat.opacity = enabled ? 0.25 : 1.0;
+      mat.depthWrite = !enabled;
+      mat.needsUpdate = true;
+    });
+  };
+
+  const setCollisionPulse = (intensity: number) => {
+    const k = THREE.MathUtils.clamp(intensity, 0, 1);
+    allShellMaterials.forEach((mat) => {
+      if (k > 0.001) {
+        mat.emissive.setHex(0xdc2626);
+        mat.emissiveIntensity = k * 0.75;
+      } else {
+        mat.emissive.setHex(0x000000);
+        mat.emissiveIntensity = 0;
+      }
+    });
+  };
+
   return {
-    materials,
+    foundationMaterial,
+    coreMaterials,
+    roofMaterial,
+    allShellMaterials,
+    setXrayMode,
+    setCollisionPulse,
     dispose: () => {
-      materials.forEach((mat) => mat.dispose());
+      allShellMaterials.forEach((mat) => mat.dispose());
       textures.forEach((tex) => tex.dispose());
     },
   };
