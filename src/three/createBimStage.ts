@@ -5,7 +5,7 @@ export const H1 = 0.25; // Etap 1: Fundamenty (0.25 wysokości)
 export const H2 = 0.5; // Etap 2: Konstrukcja nośna (0.50 wysokości)
 export const H3 = 0.25; // Etap 3: Dach i zwieńczenie (0.25 wysokości)
 export const TOTAL_HEIGHT = H1 + H2 + H3; // 1.00 (idealny sześcian 1:1:1)
-export const BIM_WORLD_SCALE = 0.5; // Skala 50% dla wygodnego kadrowania na telefonie
+export const BIM_WORLD_SCALE = 0.9; // Skala 90% dla wygodnego kadrowania na telefonie
 export const HIDDEN_CLEARANCE = 0.008;
 
 export interface HotspotInfo {
