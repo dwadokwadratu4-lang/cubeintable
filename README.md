@@ -1,2 +1,1 @@
-# cubeintable
-Kwadrat na stole i kamera
+Kwadrat na stole.

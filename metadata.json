@@ -1,0 +1,6 @@
+{
+  "name": "WebAR 3D | Artur Wierzbicki",
+  "description": "Aplikacja WebAR 3D w React i Three.js z obsługą tylnej kamery Android, interaktywnym sześcianem 6-kolorowym i maską płaszczyzny podłogi.",
+  "requestFramePermissions": ["camera"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
